@@ -7,6 +7,8 @@ import warnings
 from collections.abc import Sequence
 from itertools import combinations_with_replacement, product
 from typing import TYPE_CHECKING
+from multiprocessing.pool import Pool
+import functools
 
 import healpy as hp
 import numpy as np
@@ -745,7 +747,37 @@ def compute_gaussian_spectra(fields: Fields, spectra: Cls) -> Cls:
     return gls
 
 
-def solve_gaussian_spectra(fields: Fields, spectra: Cls) -> Cls:
+def _solve_gaussian_spectra_core(i_j_cl, fields):
+    # This is a helper function for parallel processing
+    i, j, cl = i_j_cl
+    if cl.size > 0:
+        # transformation pair
+        t1, t2 = fields[i], fields[j]
+
+        # set zero-padding of solver to 2N
+        pad = 2 * cl.size
+
+        # if the desired monopole is zero, that is most likely
+        # an artefact of the theory spectra -- the variance of the
+        # matter density in a finite shell is not zero
+        # -> set output monopole to zero, which ignores cl[0]
+        monopole = 0.0 if cl[0] == 0 else None
+
+        # call solver
+        gl, _, info = glass.grf.solve(cl, t1, t2, pad=pad, monopole=monopole)
+
+        # warn if solver didn't converge
+        if info == 0:
+            warnings.warn(
+                f"Gaussian spectrum for fields ({i}, {j}) did not converge",
+                stacklevel=2,
+            )
+    else:
+        gl = 0 * cl  # makes a copy of the empty array
+    
+    return gl
+
+def solve_gaussian_spectra(fields: Fields, spectra: Cls, pool: Pool | None = None) -> Cls:
     """
     Solve a sequence of Gaussian angular power spectra.
 
@@ -759,6 +791,8 @@ def solve_gaussian_spectra(fields: Fields, spectra: Cls) -> Cls:
         The fields to be simulated.
     spectra
         The desired angular power spectra of the fields.
+    pool
+        Optional multipprocessing pool.
 
     Returns
     -------
@@ -771,32 +805,14 @@ def solve_gaussian_spectra(fields: Fields, spectra: Cls) -> Cls:
         raise ValueError(msg)
 
     gls = []
-    for i, j, cl in enumerate_spectra(spectra):
-        if cl.size > 0:
-            # transformation pair
-            t1, t2 = fields[i], fields[j]
 
-            # set zero-padding of solver to 2N
-            pad = 2 * cl.size
-
-            # if the desired monopole is zero, that is most likely
-            # and artefact of the theory spectra -- the variance of the
-            # matter density in a finite shell is not zero
-            # -> set output monopole to zero, which ignores cl[0]
-            monopole = 0.0 if cl[0] == 0 else None
-
-            # call solver
-            gl, _cl_out, info = glass.grf.solve(cl, t1, t2, pad=pad, monopole=monopole)
-
-            # warn if solver didn't converge
-            if info == 0:
-                warnings.warn(
-                    f"Gaussian spectrum for fields ({i}, {j}) did not converge",
-                    stacklevel=2,
-                )
-        else:
-            gl = 0 * cl  # makes a copy of the empty array
-        gls.append(gl)
+    if pool is None:
+        for i, j, cl in enumerate_spectra(spectra):
+            gl = _solve_gaussian_spectra_core((i, j, cl), fields)
+            gls.append(gl)
+    else:
+        f = functools.partial(_solve_gaussian_spectra_core, fields=fields)
+        gls = pool.map(f, enumerate_spectra(spectra), chunksize=1)
     return gls
 
 
