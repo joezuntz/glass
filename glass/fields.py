@@ -806,6 +806,9 @@ def solve_gaussian_spectra(fields: Fields, spectra: Cls, pool: Pool | None = Non
 
     gls = []
 
+    # We optionally parallelize this using a multiprocessing pool.
+    # This part of the code is not currently threaded when using the numpy
+    # variant of the FLTs.
     if pool is None:
         for i, j, cl in enumerate_spectra(spectra):
             gl = _solve_gaussian_spectra_core((i, j, cl), fields)
