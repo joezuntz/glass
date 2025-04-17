@@ -750,6 +750,7 @@ def compute_gaussian_spectra(fields: Fields, spectra: Cls) -> Cls:
 def _solve_gaussian_spectra_core(i_j_cl, fields):
     # This is a helper function for parallel processing
     i, j, cl = i_j_cl
+    print("Solving Gaussian spectrum for fields", i, j)
     if cl.size > 0:
         # transformation pair
         t1, t2 = fields[i], fields[j]
@@ -774,7 +775,7 @@ def _solve_gaussian_spectra_core(i_j_cl, fields):
             )
     else:
         gl = 0 * cl  # makes a copy of the empty array
-    
+    print("Done Gaussian spectrum for fields", i, j)
     return gl
 
 def solve_gaussian_spectra(fields: Fields, spectra: Cls, pool: Pool | None = None) -> Cls:
@@ -800,6 +801,7 @@ def solve_gaussian_spectra(fields: Fields, spectra: Cls, pool: Pool | None = Non
 
     """
     n = len(fields)
+    print("Computing Gaussian spectra for", n, "fields,", len(spectra), "spectra")
     if len(spectra) != n * (n + 1) // 2:
         msg = "mismatch between number of fields and spectra"
         raise ValueError(msg)
